@@ -16,7 +16,7 @@ public class EdxLogAnalyze {
 	
 	public static void main(String[] args) throws Exception {
 		
-		String file_path = "log.txt";
+		String file_path = "../../Documents/CMU/MOOC/LabStudy/log.txt";
 		String url_map_path = "urlmap.txt";
 		String username_output = "username.txt";
 		
@@ -44,7 +44,7 @@ public class EdxLogAnalyze {
 
 			if(jsonobj.get("page") == null) continue;
 			String url = jsonobj.get("page").toString();
-			//System.out.println(url);
+			
 			String username = jsonobj.get("username").toString();
 			
 			if(!StudentList.containsKey(username))
@@ -54,7 +54,7 @@ public class EdxLogAnalyze {
 			}
 			StudentList.get(username).addEvent(jsonobj, url);
 			
-			//System.out.println(url);
+			
 		}
 		scan.close();
 		
@@ -78,11 +78,20 @@ public class EdxLogAnalyze {
 			
 			ArrayList<String> neighbors =  FindSimilarStu(user, 3);
 			
+			
+			// Get the arrowstat
+			
+			ArrayList<String[]> arrowstat = GetArrowStat(user, neighbors, 1);
+			ShowArrowStat(arrowstat);
+			
+			
+			// Get the barstat
+			
+			/*
 			ArrayList<String[]> barstat = GetBarStat(user,neighbors);
 			ShowBarStat(barstat);
-			//System.out.println(cnt + " " + neighbors.size());
-			cnt ++;
-			//System.out.println(cnt);
+			*/
+			
 			
 		}
 	}
@@ -91,7 +100,7 @@ public class EdxLogAnalyze {
     }
 	
 	
-	/**
+	/** Compute the Editdistance between two students' learning paths
 	 * 
 	 * @param a : Student a
 	 * @param b : Student b
@@ -116,7 +125,13 @@ public class EdxLogAnalyze {
         return distance[a.EventList.size()][b.EventList.size()];    
 	}
 	
-	public static ArrayList<String> FindSimilarStu(String username, int thredshold)
+	/**  Find the neighbors for a user according to similarity between learning paths 
+	 * 
+	 * @param username : the username for finding similarity
+	 * @param threshold : the threshold for Editdistance. Judge two paths similar only when the editdistance < threshold 
+	 * @return 
+	 */
+	public static ArrayList<String> FindSimilarStu(String username, int threshold)
 	{
 		ArrayList<String> result_list = new ArrayList<String>();
 		if(StudentList.get(username).EventList.size() == 0) return result_list;
@@ -127,7 +142,7 @@ public class EdxLogAnalyze {
 			
 			//if(StudentList.get(key).EventList.get(StudentList.get(key).EventList.size()-1).equals(StudentList.get(username).EventList.get(StudentList.get(username).EventList.size()-1)) == false) continue;
 			
-			if(EditDistance(StudentList.get(key),StudentList.get(username)) < thredshold)
+			if(EditDistance(StudentList.get(key),StudentList.get(username)) < threshold)
 			{
 				result_list.add(key);
 			}
@@ -135,6 +150,12 @@ public class EdxLogAnalyze {
 		return result_list;
 	}
 	
+	/** Get the statistics for barchart
+	 * 
+	 * @param user : the username for the barchart
+	 * @param neighbors : the list of neighbors for the user
+	 * @return : the list of barstat, for each item in the list, item[0] is the name of the action eg: "L1" "Q3", item[1] is the height of bar.
+	 */
 	public static ArrayList<String[]> GetBarStat(String user,ArrayList<String> neighbors)
 	{
 		ArrayList<String[]> barstat = new ArrayList<String[]>();
@@ -199,6 +220,85 @@ public class EdxLogAnalyze {
 		
 		return barstat;
 	}
+	
+	/**  Get the statistics for arrowchart
+	 * 
+	 * @param user : the username for the arrowchart
+	 * @param neighbors : the list of neighbors for the user
+	 * @param delta : the length each learning path would be 2*delta+1
+	 * @return : the list of edges, which item[0] is the source node and item[1] is the target node
+	 */
+	public static ArrayList<String[]> GetArrowStat(String user,ArrayList<String> neighbors,int delta)
+	{
+		ArrayList<String[]> arrowstat = new ArrayList<String[]>();
+		if (StudentList.get(user).EventList.size() == 0) return arrowstat;
+		String lastevent = StudentList.get(user).EventList.get(StudentList.get(user).EventList.size()-1).toString();
+		
+		int cnt = 0;
+		// Choose the path satisify the length requirement 
+		
+		HashMap<String,Integer> pathcnt = new HashMap<String,Integer>(); 
+		for(int i=0;i<=neighbors.size()-1;i++)
+		{
+			String candidate = neighbors.get(i);
+			if(StudentList.get(candidate).Eventhash.containsKey(lastevent) == false) continue;
+			int index = StudentList.get(candidate).Eventhash.get(lastevent);
+			if(index <=delta-1 || index >= StudentList.get(candidate).EventList.size()-delta) continue;
+			cnt++;
+			
+			// cat the string of event as the key for hash
+			String key = "";
+			for(int j = index-delta;j<=index+delta;j++)
+			{
+				key += StudentList.get(candidate).EventList.get(j).toString() + ",";
+			}
+			
+			// Update the hashtable for learning paths
+			if(pathcnt.containsKey(key)==false) pathcnt.put(key, 1);
+			else pathcnt.put(key, pathcnt.get(key)+1);
+			
+		}
+		
+		// Choose the top k paths
+		int k = 2, kcnt = 0;
+		
+		while(kcnt < k)
+		{
+			if(pathcnt.size() == 0) break;
+			
+			String maxpath = "";
+			int maxnum = -1;
+			for(String key:pathcnt.keySet())
+			{
+				if(pathcnt.get(key) > maxnum)
+				{
+					maxpath = key;
+					maxnum = pathcnt.get(key);
+				}
+				
+			}
+			
+			// Add this path into arrowstat
+			String[] can_path = maxpath.split(","); 
+			for(int s = 0;s<=can_path.length-2;s++)
+			{
+				String[] edge = new String[2];
+				edge[0] = can_path[s];
+				edge[1] = can_path[s+1];
+				arrowstat.add(edge);
+			}
+			
+			pathcnt.remove(maxpath);
+			kcnt ++;
+		}
+		//System.out.println(cnt);
+		return arrowstat;
+	}
+	
+	/**   Print the barstat
+	 * 
+	 * @param barstat
+	 */
 	public static void ShowBarStat(ArrayList<String[]> barstat)
 	{
 		for(int i=0;i<=barstat.size()-1;i++)
@@ -207,6 +307,22 @@ public class EdxLogAnalyze {
 		}
 		System.out.println("");
 	}
+	/** Print the arrowstat
+	 * 
+	 * @param arrowstat
+	 */
+	public static void ShowArrowStat(ArrayList<String[]> arrowstat)
+	{
+		for(int i=0;i<arrowstat.size()-1;i++)
+		{
+			System.out.print(arrowstat.get(i)[0]+"-->"+arrowstat.get(i)[1]+" ");
+		}
+		System.out.println("");
+	}
+	/** Print the learning path
+	 * 
+	 * @param username
+	 */
 	public static void ShowLearningPath(String username)
 	{
 		for(int i=0;i<=StudentList.get(username).EventList.size()-1;i++)
